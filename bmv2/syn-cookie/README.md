@@ -1,86 +1,88 @@
-## Topology 
+# SYN Cookie Proxy (P4 / BMv2)
 
+> **Modernization note:** This directory is based on the original [SYN Cookie implementation](https://github.com/syn-proxy/P4-implementations/tree/master/bmv2/syn-cookie). The SYN Cookie design, P4 data-plane algorithm, and original control-plane implementation belong to the upstream authors. The `modern-bmv2-port` branch focuses on compatibility with a modern P4 VM, Python 3, and reproducible functional tests.
 
+## Overview
+
+This example implements an experimental TCP SYN proxy in a P4-programmable BMv2 switch. For an unrecognized TCP client, the proxy generates a SYN-ACK containing a cookie; the client must acknowledge the cookie before the proxy initiates the server-side handshake. After validation, the control plane receives BMv2 digest notifications and installs state used to translate TCP sequence/acknowledgment numbers between the two connections.
+
+This is a **teaching/research prototype**, not a production security appliance. The implementation has known limitations, including incomplete TCP option handling and static cookie-related parameters; the functional tests below do not constitute a security or performance evaluation.
+
+## Topology
+
+```text
+h1 (10.0.0.1) --\
+                  s1 (BMv2 SYN Cookie Proxy) ---- h3 (10.0.0.3, HTTP :8080)
+h2 (10.0.0.2) --/
+      ^
+      Scapy incomplete-SYN test
 ```
-                                +--+      
-                     client     |h1+----|
-                                +--+    |    P4
-                                        |   +--+     +--+
-                                        |---+s1+-----+h3+  WebServer
-                                        |   +--+     +--+
-                                +--+    |  Proxy     
-                     Attacker   |h2+----|
-                                +--+      
 
+| Node | Role | Switch port |
+| --- | --- | --- |
+| `h1` | Legitimate HTTP client | `s1-eth1` / port 1 |
+| `h2` | Client sending a SYN without completing the handshake | `s1-eth2` / port 2 |
+| `h3` | HTTP server | `s1-eth3` / port 3 |
+| `s1` | BMv2 `simple_switch`, Thrift TCP port 9090 | — |
+
+## Quick start
+
+See **[Complete tutorial: setup, execution, validation, troubleshooting](docs/RUN_MODERN_BMV2.md)** for prerequisite installation, the required Python environment, and details of the IPC socket fix.
+
+The commands below assume the documented VM, dependencies already installed, and a checkout of `modern-bmv2-port`.
+
+**Terminal 1 — BMv2 + Mininet:**
+
+```bash
+cd ~/P4-implementations/bmv2/syn-cookie
+sudo /home/p4/src/p4dev-python-venv/bin/python \
+  /home/p4/src/p4dev-python-venv/bin/p4run \
+  --config p4app-modern.json
 ```
 
-The topology consists of 3 hosts (h1, h2, h3) and one P4 programmable switch (S1).
+Keep the `mininet>` prompt open. **Terminal 2 — controller**, after the BMv2 socket exists:
 
-- **h1**: client.
-- **h2**: attacker.
-- **h3**: webserver.
-- **s1**: P4 proxy.- 
+```bash
+cd ~/P4-implementations/bmv2/syn-cookie
+sudo chgrp p4 /tmp/bmv2-1-notifications.ipc
+sudo chmod 770 /tmp/bmv2-1-notifications.ipc
+/home/p4/src/p4dev-python-venv/bin/python -u controller_py3.py
+```
 
+> The socket is recreated on BMv2 restart; repeat the permission adjustment each time. Running the controller before this fix can silently leave the connection table empty.
 
-## SYN-Cookie Implementation Visualization   
-   
-        Client                          Proxy                       Server
-   
-                   SYN
-             ---------------->
-             seq = x, ack = 0
-             
-                                   k = createCookie()
-                   SYN-ACK
-             <----------------
-             seq = k, ack = x+1
-             
+**Back in Mininet — normal connection:**
 
-                    ACK
-             ----------------->
-             seq = x+1, ack = k+1
-                                   bool = verifyCookie(k)
-                                   add to whitelist 
-                                   start TCP connection 
-                                                                     SYN
-                                   use the same initial SYN    --------------->
-                                                               seq = x, ack = 0
+```text
+mininet> h1 ping -c 3 10.0.0.3
+mininet> h3 python3 -m http.server 8080 &
+mininet> h1 curl -v --max-time 10 http://10.0.0.3:8080/
+```
 
-                                                                    SYN-ACK
-                                  Connection is established    <----------------   r=selectRandomSeq()
-                                                               seq = r, ack = x+1
-                                  Add state of the connection
-                                  to connections table               ACK
-                                                               ----------------->
-                                                               seq = x+1, ack = r+1
+The expected application-level result is `HTTP/1.0 200 OK`. A successful HTTP request, together with new `connections` entries, shows that the normal proxy flow is operational in this environment.
 
-                  HTTP GET                                          HTTP GET
-             ----------------->         TRANSFORM              ------------------>
-             seq = x+1, ack = k+1                              seq = x+1, ack = r+1
+**Incomplete handshake — one SYN from h2:**
 
-                   ACK                                                ACK
-             <-----------------         TRANSFORM              <------------------
-             seq = k+1, ack = x+1+payload                     seq = r+1, ack = x+1+payload
-             
-                                          .
-                                          .
-                                          .
-                                        FIN
-                                  ---------------->    
-                                  
-                                       FIN-ACK
-                                  <----------------
-                                  
-                                        ACK
-                                  ---------------->
+```text
+mininet> h2 /home/p4/src/p4dev-python-venv/bin/python \
+  /home/p4/P4-implementations/bmv2/syn-cookie/test_incomplete_syn.py
+```
 
+Observe traffic at the switch interfaces as shown in the detailed tutorial. Expect a SYN on `s1-eth2`, a SYN-ACK sent back to h2, and **no matching h2:40001 → h3:8080 SYN on `s1-eth3`**. The local Linux kernel may return a RST because Scapy has not opened a TCP socket. The absence of a matching server-side SYN—not the debug message alone—is the relevant evidence.
 
-## Description
+## Files in this port
 
+| File | Purpose |
+| --- | --- |
+| `p4src/proxy.p4` | P4 SYN Cookie proxy data plane (adapted for current BMv2/P4C) |
+| `p4app-modern.json` | Current `p4-utils` / Mininet topology configuration |
+| `s1-commands.txt` | IPv4 forwarding entries and mirror session |
+| `controller_py3.py` | Python 3 digest listener and Thrift-based table updates |
+| `test_incomplete_syn.py` | Single-SYN packet generator using Scapy |
+| `p4app.json`, `controller.py` | Original example artifacts retained for comparison |
 
-Simple forwarding switch implementation is extended to implement a control-plane mitigation mechanism for SYN-flood using SYN-cookie for verifying legitimate client on first use. Upon connection, the proxy creates a cookie from connection information and replace the sequence number in the SYN-ACK packet. When a valid cookie is received by the proxy the client is white-listed and another TCP connection will be established with the server since the client is legitimate and provided a valid cookie. 
+## Upstream attribution
 
+This is a maintained *port of an existing implementation*. Credit for the original SYN Cookie mechanism and initial P4/controller implementation belongs to the [upstream SYN Proxy authors](https://github.com/syn-proxy/P4-implementations). The updates in this branch address build compatibility, controller APIs, topology configuration, environment-specific IPC permissions, documentation, and functional validation.
 
-This implementation of SYN-cookies is considered a control-plane approach since both the connection state and the white-list are implemented using a table in the control-plane. In P4, in order to send data to control plan two approaches are available: copy to CPU approach that sends the whole packet using a specific port to the control plan controller to be processed. The second approach is Digest messages, where these message structure is defined in the P4 program and are sent to the control plan controller to be parsed accordingly, and then perform some operation on tables e.g. add, delete, update entries. 
-
-This approach is fully transparent to the client since the normal TCP handshake is established with the proxy and the translation of sequence and acknowledgment numbers for each packet exchanged in the connection between the client and the server. The cookie is generated from the 5-tuple (srcAddr,dstAddr,srcPort,dstPort, protocol) in addition to MSS and time information to generate 32bit value that is used as a sequence number for the SYN-ACK packet sent to the client. Once the client responds with ACK packet with correct ack that contains the correct cookie value, the client is then verified and considered legitimate, therefore, the client IP address will be added to the white-list table in the control plane and a connection will be established between the proxy and the server to forward all upcoming traffic from the client.
+For the original SYN Cookie sequence-flow explanation and background, refer to the [upstream README](https://github.com/syn-proxy/P4-implementations/blob/master/bmv2/syn-cookie/README.md).
