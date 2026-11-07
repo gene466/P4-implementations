@@ -1,0 +1,6 @@
+# log
+pcap/
+log/
+
+# python
+__pycache__/

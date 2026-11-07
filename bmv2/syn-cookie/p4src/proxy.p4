@@ -14,7 +14,7 @@ const bit<8>  UDP_PROTOCOL = 0x11;   // UDP parsing is not implemented
 #define MSS_SERVER_ENCODING_VALUE 1
 //represents MSS 1460
 
-#define SERVER_ADDRESS 167772419
+#define SERVER_ADDRESS 167772163
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
@@ -181,7 +181,7 @@ control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
     action drop() {
-        mark_to_drop();
+        mark_to_drop(standard_metadata);
     }
     // forward packet to the appropriate port
     action ipv4_forward(macAddr_t dstAddr, egressSpec_t port) {
