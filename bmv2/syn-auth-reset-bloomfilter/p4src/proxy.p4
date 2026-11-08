@@ -146,7 +146,7 @@ control MyIngress(inout headers hdr,
 
     register<bit<BLOOM_FILTER_BIT_WIDTH>>(BLOOM_FILTER_ENTRIES) bloom_filter;
     action drop() {
-        mark_to_drop();
+        mark_to_drop(standard_metadata);
     }
 
     action set_allowed(){
@@ -198,9 +198,15 @@ control MyIngress(inout headers hdr,
 
     action reset_connection(){
         //Set RST flag and bounce packet back out on the same port it came into
+        // RFC 793: a RST answering a segment without ACK must carry
+        // SEQ = 0, ACK = 1 and ack = SEG.SEQ + 1 (the SYN consumes one sequence
+        // number). Linux silently ignores a RST in SYN_SENT unless it acknowledges
+        // the SYN, so without this the client never sees the reset.
+        hdr.tcp.ackNo = hdr.tcp.seqNo + 1;
+        hdr.tcp.seqNo = 0;
         hdr.tcp.rst = 1;
         hdr.tcp.syn = 0;
-        hdr.tcp.ack = 0;
+        hdr.tcp.ack = 1;
 
         //Set the correct IP addresses, RESET from SERVER to CLIENT
 
@@ -247,8 +253,9 @@ control MyIngress(inout headers hdr,
 
 
     apply {
-        // if the packet is establishing a TCP connection with SYN flag set, check white list
-        if(hdr.tcp.isValid() && hdr.tcp.syn == 1){
+        // if the packet is establishing a TCP connection (pure SYN), check white list.
+        // ack == 0 excludes the server's SYN-ACK, which must not be authenticated/reset.
+        if(hdr.tcp.isValid() && hdr.tcp.syn == 1 && hdr.tcp.ack == 0){
            check_if_allowed();
            // if the connection is new , reset the connection and add to whitelist
            if (meta.register_cell_one != 1 || meta.register_cell_two != 1){

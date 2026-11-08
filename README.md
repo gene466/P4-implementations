@@ -17,6 +17,10 @@ The [`modern-bmv2-port`](https://github.com/gene466/P4-implementations/tree/mode
 - Documented the BMv2 Nanomsg IPC socket permission issue and its fix.
 - Added `test_incomplete_syn.py` and procedures for successful HTTP requests and incomplete TCP handshakes.
 
+### SYN authentication with bloom filter
+
+`bmv2/syn-auth-reset-bloomfilter` has also been ported (compile fix, modern config, plus fixes to the RST format and SYN-ACK handling). See **[its README](bmv2/syn-auth-reset-bloomfilter/README.md#running-on-a-modern-bmv2-vm-modern-bmv2-port-branch)**.
+
 ### Scope and limitations
 
 These changes are an **environment compatibility port and functional validation**, not a new SYN Cookie algorithm or a production-hardened SYN-flood defense. The underlying P4 SYN Cookie design and original implementation are attributable to the [upstream authors](https://github.com/syn-proxy/P4-implementations). Passing the single-SYN isolation test does not establish resilience or performance under high-volume SYN flooding.
