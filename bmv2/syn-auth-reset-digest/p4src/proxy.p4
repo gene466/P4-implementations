@@ -144,7 +144,7 @@ control MyIngress(inout headers hdr,
                   inout standard_metadata_t standard_metadata) {
 
     action drop() {
-        mark_to_drop();
+        mark_to_drop(standard_metadata);
     }
 
     action ipv4_forward(macAddr_t dstAddr, egressSpec_t port) {
@@ -164,9 +164,12 @@ control MyIngress(inout headers hdr,
 
     action reset_connection(){
         //Set RST flag and bounce packet back out on the same port it came into
+        // A reset answering a SYN must acknowledge that SYN to be accepted.
+        hdr.tcp.ackNo = hdr.tcp.seqNo + 1;
+        hdr.tcp.seqNo = 0;
         hdr.tcp.rst = 1;
         hdr.tcp.syn = 0;
-        hdr.tcp.ack = 0;
+        hdr.tcp.ack = 1;
 
         //Set the correct IP addresses, RESET from SERVER to CLIENT
 
@@ -219,12 +222,12 @@ control MyIngress(inout headers hdr,
             NoAction;
         }
         size = 16384;
-        default_action = learn_ip;
+        default_action = NoAction;
     }
 
     apply {
-        // if the packet is establishing a TCP connection with SYN flag set, check white list
-        if(hdr.tcp.isValid() && hdr.tcp.syn == 1){
+        // Only client SYNs need authentication; do not reset server SYN-ACKs.
+        if(hdr.tcp.isValid() && hdr.tcp.syn == 1 && hdr.tcp.ack == 0){
            if (whitelist.apply().hit){
                //do nothing, wait for forwarding
            }else{
