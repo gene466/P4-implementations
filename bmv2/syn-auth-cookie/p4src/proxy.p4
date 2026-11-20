@@ -154,7 +154,7 @@ control MyIngress(inout headers hdr,
                   inout standard_metadata_t standard_metadata) {
 
     action drop() {
-        mark_to_drop();
+        mark_to_drop(standard_metadata);
     }
 
     // forward packet to the appropriate port
@@ -176,7 +176,10 @@ control MyIngress(inout headers hdr,
 
 
     action reset_connection(){
-        //Set RST flag and bounce packet back out on the same port it came into
+        // The client has already accepted our cookie SYN-ACK. Its next expected
+        // server sequence is the ACK number in the packet being reset.
+        hdr.tcp.seqNo = hdr.tcp.ackNo;
+        hdr.tcp.ackNo = 0;
         hdr.tcp.rst = 1;
         hdr.tcp.syn = 0;
         hdr.tcp.ack = 0;
@@ -273,7 +276,7 @@ control MyIngress(inout headers hdr,
     }
 
     //Validate SYN cookie received from a client, last packet in the handshake
-    //if a valid cookie is received, the client information is added to whitelist (bloom filter)
+    //If a valid cookie is received, the controller adds the IP to the whitelist table.
     action validate_syn_cookie(){
         // check if the sequence number of SYN-ACK packet is a valid cookie for the client
         bit<5> time = TIMER_COUNT;   //constant value for time
