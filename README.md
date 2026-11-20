@@ -4,9 +4,9 @@ This repository is a fork of [syn-proxy/P4-implementations](https://github.com/s
 
 ## Modern BMv2 / Python 3 port
 
-The [`modern-bmv2-port`](https://github.com/gene466/P4-implementations/tree/modern-bmv2-port) branch contains a reproducibility-oriented modernization of the original **P4 SYN Cookie** example (`bmv2/syn-cookie`). It has been tested on a VMware Ubuntu 24.04 P4 development VM.
+The [`modern-bmv2-port`](https://github.com/gene466/P4-implementations/tree/modern-bmv2-port) branch contains reproducibility-oriented updates to the four P4/BMv2 examples. They have been functionally tested on a VMware Ubuntu 24.04 P4 development VM.
 
-**[SYN Cookie overview and topology](bmv2/syn-cookie/README.md)** · **[Complete setup, run, and validation tutorial](bmv2/syn-cookie/docs/RUN_MODERN_BMV2.md)**
+**[BMv2 method comparison and two-SYN limitation](bmv2/README.md)** · **[SYN Cookie overview and topology](bmv2/syn-cookie/README.md)** · **[Complete setup, run, and validation tutorial](bmv2/syn-cookie/docs/RUN_MODERN_BMV2.md)**
 
 ### What was updated in this fork
 
@@ -21,6 +21,10 @@ The [`modern-bmv2-port`](https://github.com/gene466/P4-implementations/tree/mode
 
 `bmv2/syn-auth-reset-bloomfilter` has also been ported (compile fix, modern config, plus fixes to the RST format and SYN-ACK handling). See **[its README](bmv2/syn-auth-reset-bloomfilter/README.md#running-on-a-modern-bmv2-vm-modern-bmv2-port-branch)**.
 
+### Other modern BMv2 examples
+
+The [SYN-authentication cookie](bmv2/syn-auth-cookie/README.md#running-on-a-modern-bmv2-vm-modern-bmv2-port) and [digest-based reset](bmv2/syn-auth-reset-digest/README.md#running-on-a-modern-bmv2-vm-modern-bmv2-port) examples now have modern `p4-utils` configs and Python 3 digest controllers. Their READMEs describe the tested first-reset, second-request HTTP flow and single-SYN checks.
+
 ### Scope and limitations
 
 These changes are an **environment compatibility port and functional validation**, not a new SYN Cookie algorithm or a production-hardened SYN-flood defense. The underlying P4 SYN Cookie design and original implementation are attributable to the [upstream authors](https://github.com/syn-proxy/P4-implementations). Passing the single-SYN isolation test does not establish resilience or performance under high-volume SYN flooding.
@@ -30,6 +34,6 @@ The documented setup is tied to the referenced P4 VM and paths; other Linux vers
 ## Other original implementations
 
 - **Libmoon/DPDK:** `libmoon/`
-- **Other P4/BMv2 examples:** `bmv2/`
+- **P4/BMv2 examples:** [bmv2/](bmv2/README.md)
 
 For the original project and its research context, see [syn-proxy/P4-implementations](https://github.com/syn-proxy/P4-implementations).
